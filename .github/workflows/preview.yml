@@ -1,0 +1,43 @@
+# Plan morning-digest § 3/§ 4. Builds the digest preview in CI and deploys it straight to Pages,
+# so the preview never lands in the repo (ADR 0003). Marker comes from the repo variable
+# LANE_MARKER; delete the variable and re-run to upload the clean copy over the same link.
+name: preview
+on:
+  workflow_dispatch:
+    inputs:
+      night:
+        description: night to preview
+        default: '2026-10-28'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: pages
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm i -g pnpm@12.14.0 && pnpm install --no-frozen-lockfile
+      - name: save the page
+        env:
+          LANE_MARKER: ${{ vars.LANE_MARKER }}
+          NIGHT: ${{ inputs.night }}
+          PORT: 8787
+        run: |
+          pnpm start &
+          for i in $(seq 30); do curl -sf localhost:8787/health && break; sleep 1; done
+          mkdir _site
+          curl -sf "localhost:8787/digest/$NIGHT" -o _site/index.html
+          wc -c _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
